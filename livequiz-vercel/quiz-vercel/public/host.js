@@ -3,8 +3,9 @@
   var $ = function (id) { return document.getElementById(id); };
   var SHAPES = ['▲', '◆', '●', '■'];
   var PIN_KEY = 'livequiz.hostpin';
-  var API = '/api/server';
-  var SOCKET_OPTS = { path: '/api/server/socket.io', transports: ['websocket'], reconnectionDelay: 300, reconnectionDelayMax: 3000 };
+  // every API call goes to the single Vercel Function at /api/server, with the route in ?__path=
+  function apiUrl(route) { return '/api/server?__path=' + encodeURIComponent(route.replace(/^\//, '')); }
+  var SOCKET_OPTS = { path: '/api/server', addTrailingSlash: false, transports: ['websocket'], reconnectionDelay: 300, reconnectionDelayMax: 3000 };
   var views = ['login', 'list', 'edit', 'game'];
   var socket = null;
   var quizzes = [];
@@ -23,7 +24,7 @@
     $('logout-btn').classList.toggle('hidden', name === 'login');
   }
   function api(method, url, body) {
-    return fetch(API + url, {
+    return fetch(apiUrl(url), {
       method: method,
       headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
@@ -125,7 +126,7 @@
     return shrink(file).then(function (blob) {
       var fd = new FormData();
       fd.append('image', blob, 'image');
-      return fetch(API + '/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
+      return fetch(apiUrl('/upload'), { method: 'POST', body: fd, credentials: 'same-origin' });
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
         if (!r.ok) throw new Error(data.error || 'Upload failed');
@@ -315,7 +316,7 @@
     if (s.state === 'ended') {
       clearInterval(tick);
       board($('f-board'), s.leaderboard);
-      $('csv-link').href = API + '/games/' + s.pin + '/results.csv';
+      $('csv-link').href = apiUrl('/games/' + s.pin + '/results.csv');
       return;
     }
 
