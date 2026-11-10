@@ -5,7 +5,7 @@
   var KEY = 'livequiz.player';
   var views = ['join', 'lobby', 'question', 'reveal', 'ended'];
   // Vercel needs the WebSocket transport and the function's path
-  var socket = io({ path: '/api/server/socket.io', transports: ['websocket'], reconnectionDelay: 300, reconnectionDelayMax: 3000 });
+  var socket = io({ path: '/api/server', addTrailingSlash: false, transports: ['websocket'], reconnectionDelay: 300, reconnectionDelayMax: 3000 });
   var tick = null;
   var current = null;
 
