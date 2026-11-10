@@ -225,17 +225,31 @@ if (!ON_VERCEL) {
 // ---------- Socket.IO ----------
 const server = http.createServer(app);
 const io = new Server(server, {
-  path: '/api/socket.io', transports: ['websocket'], serveClient: false,
+  path: '/api/server', addTrailingSlash: false, transports: ['websocket'], serveClient: false,
   maxHttpBufferSize: 20000, pingInterval: 20000, pingTimeout: 25000,
 });
 const hostNs = io.of('/host');
 
-// Browsers call /api/server/... (the path of this function). Map it onto the /api/... routes above.
+/*
+ * Vercel only sends the exact path /api/server to this function (sub-paths are not routed to it), so:
+ *   - API calls arrive as  /api/server?__path=host/login   -> handled as /api/host/login
+ *   - live connections as  /api/server?EIO=4&transport=websocket (Socket.IO, path '/api/server')
+ */
 function normalizeUrl(req) {
-  let u = req.url || '/';
-  if (u === '/api/server' || u.startsWith('/api/server/') || u.startsWith('/api/server?')) u = '/api' + u.slice('/api/server'.length);
-  else if (ON_VERCEL && !u.startsWith('/api/') && u !== '/api') u = '/api' + (u.startsWith('/') ? u : '/' + u);
-  req.url = u;
+  const raw = req.url || '/';
+  const q = raw.indexOf('?');
+  const pathname = q < 0 ? raw : raw.slice(0, q);
+  const params = new URLSearchParams(q < 0 ? '' : raw.slice(q + 1));
+  if (params.has('__path')) {
+    const route = String(params.get('__path')).replace(/^\/+/, '');
+    params.delete('__path');
+    const rest = params.toString();
+    req.url = '/api/' + route.split('/').map(encodeURIComponent).join('/') + (rest ? '?' + rest : '');
+  } else if (params.has('EIO')) {
+    req.url = '/api/server' + raw.slice(q);
+  } else if (pathname.startsWith('/api/server/')) {
+    req.url = '/api' + raw.slice('/api/server'.length);
+  }
 }
 server.prependListener('request', normalizeUrl);
 server.prependListener('upgrade', normalizeUrl);
