@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Quiz Master</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="title">Live<span>Quiz</span> · Quiz Master</div>
+    <div class="spacer"></div>
+    <button class="btn small ghost-light hidden" id="logout-btn">Log out</button>
+  </div>
+
+  <!-- Login -->
+  <div class="wrap hidden" id="v-login">
+    <form class="card" id="login-form">
+      <h2>Quiz master login</h2>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="btn block" type="submit">Log in</button>
+      <div class="error" id="login-error" role="alert"></div>
+    </form>
+  </div>
+
+  <!-- Quiz list -->
+  <div class="wrap hidden" id="v-list">
+    <div class="card">
+      <div class="row between">
+        <h2>Your quizzes</h2>
+        <button class="btn" id="new-quiz-btn">+ New quiz</button>
+      </div>
+      <div id="quiz-list"></div>
+      <div class="error" id="list-error" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div class="wrap wide hidden" id="v-edit">
+    <div class="card">
+      <div class="row between">
+        <h2>Edit quiz</h2>
+        <button class="btn small ghost" id="back-btn">← Back</button>
+      </div>
+      <label for="quiz-title">Quiz title</label>
+      <input id="quiz-title" type="text" maxlength="100" placeholder="e.g. Friday Team Quiz">
+      <div id="questions"></div>
+      <div class="row">
+        <button class="btn ghost" id="add-q-btn">+ Add question</button>
+        <div class="spacer"></div>
+        <button class="btn" id="save-btn">Save quiz</button>
+      </div>
+      <div class="error" id="edit-error" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- Live game -->
+  <div class="wrap wide hidden" id="v-game">
+    <!-- lobby -->
+    <div id="g-lobby" class="center hidden">
+      <p class="light">Join at</p>
+      <div class="join-url" id="g-url"></div>
+      <p class="light">and enter the PIN</p>
+      <div class="pin-box"><div class="pin" id="g-pin"></div></div>
+      <h2 id="g-count"></h2>
+      <button class="btn accent big" id="start-btn">Start quiz</button>
+      <div class="chips" id="g-players"></div>
+      <p class="light">Click a name to remove that player.</p>
+    </div>
+
+    <!-- question / reveal -->
+    <div id="g-stage" class="stage hidden">
+      <div class="q-meta">
+        <span id="s-count"></span>
+        <span id="s-answered"></span>
+        <span class="timer" id="s-timer"></span>
+      </div>
+      <div class="q-text" id="s-text"></div>
+      <img class="q-image hidden" id="s-image" alt="Question image">
+      <div class="options" id="s-options"></div>
+      <div class="center"><br><button class="btn accent big" id="next-btn"></button></div>
+      <div id="s-board-wrap" class="hidden"><h2 class="center">Leaderboard</h2><div class="board" id="s-board"></div></div>
+    </div>
+
+    <!-- final -->
+    <div id="g-final" class="center hidden">
+      <div class="big-emoji">🏆</div>
+      <h1>Final results</h1>
+      <div class="board" id="f-board"></div>
+      <div class="row">
+        <div class="spacer"></div>
+        <a class="btn ghost-light" id="csv-link" href="#">Download results (CSV)</a>
+        <button class="btn accent" id="done-btn">Back to quizzes</button>
+        <div class="spacer"></div>
+      </div>
+    </div>
+    <div class="error center" id="game-error" role="alert"></div>
+    <p class="center"><button class="btn small ghost-light hidden" id="end-btn">End game now</button></p>
+  </div>
+
+  <script src="/socket.io.min.js"></script>
+  <script src="/host.js"></script>
+</body>
+</html>

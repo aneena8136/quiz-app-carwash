@@ -1,0 +1,21 @@
+{
+  "name": "live-quiz-vercel",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Live, host-paced image quiz with PIN join - Vercel edition (Redis + Vercel Blob)",
+  "scripts": {
+    "start": "node api/server.js",
+    "loadtest": "node test/loadtest.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@vercel/blob": "^2.9.0",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.1",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
