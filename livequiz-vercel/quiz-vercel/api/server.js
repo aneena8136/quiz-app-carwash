@@ -226,7 +226,8 @@ if (!ON_VERCEL) {
 const server = http.createServer(app);
 const io = new Server(server, {
   path: '/api/server', addTrailingSlash: false, transports: ['websocket'], serveClient: false,
-  maxHttpBufferSize: 20000, pingInterval: 20000, pingTimeout: 25000,
+  // short heartbeat: Vercel recycles connections, so notice a dead one within ~15 seconds
+  maxHttpBufferSize: 20000, pingInterval: 10000, pingTimeout: 5000,
 });
 const hostNs = io.of('/host');
 
@@ -385,7 +386,7 @@ io.on('connection', (socket) => {
     // a venue often shares one IP address, so the per-IP limit is generous and each connection has its own
     if (failures >= 10 || await games.limited('pin:' + ip, 600)) return reply(cb, { error: 'Too many attempts. Please wait a minute.' });
     const pin = cleanPin(data.pin);
-    const res = data.playerId ? await games.rejoin(pin, data.playerId) : await games.join(pin, data.name);
+    const res = data.playerId ? await games.rejoin(pin, data.playerId, socket.id) : await games.join(pin, data.name, socket.id);
     if (res.gone) { failures++; await games.countHit('pin:' + ip, 60); }
     reply(cb, res);
     if (res.ok) await attach(pin, res.playerId);
@@ -396,11 +397,11 @@ io.on('connection', (socket) => {
     const pin = cleanPin(data.pin || socket.data.pin);
     const playerId = String(data.playerId || socket.data.playerId || '');
     if (!pin || !playerId) return reply(cb, { error: 'Not in a quiz' });
-    reply(cb, await games.answer(pin, playerId, data.choice));
+    reply(cb, await games.answer(pin, playerId, data.choice, socket.id));
   }));
 
   socket.on('disconnect', () => {
-    if (socket.data.pin && socket.data.playerId) games.setOffline(socket.data.pin, socket.data.playerId).catch(() => {});
+    if (socket.data.pin && socket.data.playerId) games.setOffline(socket.data.pin, socket.data.playerId, socket.id).catch(() => {});
   });
 });
 
