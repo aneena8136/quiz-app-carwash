@@ -73,7 +73,10 @@ function metaTtl(meta) {
 }
 function putMeta(pipe, meta) { return pipe.set(gk(meta.pin), JSON.stringify(meta), 'EX', metaTtl(meta)); }
 
+const QUESTION_TIME = 20; // every question gets 20 seconds, whatever the saved quiz says
+
 async function createGame(quiz) {
+  quiz = { ...quiz, questions: quiz.questions.map((q) => ({ ...q, time: QUESTION_TIME })) };
   for (let i = 0; i < 20; i++) {
     const pin = String(crypto.randomInt(100000, 1000000));
     const meta = { pin, quiz, state: 'lobby', qIndex: -1, qStart: 0, qEnd: 0, createdAt: Date.now(), endedAt: 0 };
