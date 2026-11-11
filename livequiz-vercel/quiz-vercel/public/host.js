@@ -198,14 +198,7 @@
         card.appendChild(row);
       });
 
-      card.appendChild(el('label', '', 'Time to answer'));
-      var time = el('select');
-      [10, 15, 20, 30, 45, 60, 90, 120].forEach(function (t) {
-        var o = el('option', '', t + ' seconds'); o.value = t; if (Number(q.time) === t) o.selected = true;
-        time.appendChild(o);
-      });
-      time.addEventListener('change', function () { q.time = Number(time.value); });
-      card.appendChild(time);
+      card.appendChild(el('p', 'hint', 'Players get 20 seconds to answer.'));
       box.appendChild(card);
     });
   }
@@ -220,7 +213,7 @@
         q.options.forEach(function (o, oi) { if (o.trim()) kept.push(oi); });
         if (kept.indexOf(q.correct) < 0) throw new Error('Question ' + (i + 1) + ': the option marked correct is empty');
         payload.questions.push({
-          text: q.text, image: q.image, time: q.time,
+          text: q.text, image: q.image, time: 20,
           options: kept.map(function (oi) { return q.options[oi]; }),
           correct: kept.indexOf(q.correct),
         });
