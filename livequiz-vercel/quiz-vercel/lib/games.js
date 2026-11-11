@@ -117,7 +117,9 @@ function cleanName(raw) {
   return String(raw || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
 }
 
-async function join(pin, rawName) {
+// A player counts as online while their *latest* connection is open. Vercel recycles connections,
+// so an old connection's late 'disconnect' must not mark a player offline after they reconnected.
+async function join(pin, rawName, sid) {
   const meta = await getMeta(pin);
   if (!meta) return { error: 'No quiz found with that PIN', gone: true };
   if (meta.state === 'ended') return { error: 'This quiz has already finished' };
@@ -131,25 +133,30 @@ async function join(pin, rawName) {
   await r().pipeline()
     .hset(k + ':players', id, JSON.stringify(player))
     .sadd(k + ':online', id)
-    .expire(k + ':players', GAME_TTL).expire(k + ':names', GAME_TTL).expire(k + ':online', GAME_TTL)
+    .hset(k + ':sock', id, String(sid || ''))
+    .expire(k + ':players', GAME_TTL).expire(k + ':names', GAME_TTL).expire(k + ':online', GAME_TTL).expire(k + ':sock', GAME_TTL)
     .exec();
   await publish(pin, 'host');
   return { ok: true, playerId: id, name };
 }
 
-async function rejoin(pin, playerId) {
+async function rejoin(pin, playerId, sid) {
   const k = gk(pin);
   const j = await r().hget(k + ':players', String(playerId));
   if (!j) return { error: 'Session expired', gone: true };
-  await r().sadd(k + ':online', String(playerId));
+  await r().pipeline().sadd(k + ':online', String(playerId)).hset(k + ':sock', String(playerId), String(sid || '')).expire(k + ':sock', GAME_TTL).exec();
   await publish(pin, 'host');
   const p = JSON.parse(j);
   return { ok: true, playerId: p.id, name: p.name };
 }
 
-async function setOffline(pin, playerId) {
-  await r().srem(gk(pin) + ':online', String(playerId));
-  await publish(pin, 'host');
+async function setOffline(pin, playerId, sid) {
+  const k = gk(pin);
+  // only if this connection is still the player's latest one
+  const changed = await r().eval(
+    "if redis.call('hget', KEYS[2], ARGV[1]) == ARGV[2] then redis.call('srem', KEYS[1], ARGV[1]); redis.call('hdel', KEYS[2], ARGV[1]); return 1 end return 0",
+    2, k + ':online', k + ':sock', String(playerId), String(sid || ''));
+  if (changed) await publish(pin, 'host');
 }
 
 async function startQuestion(meta, index) {
@@ -183,7 +190,7 @@ async function endGame(meta) {
   const k = gk(meta.pin);
   meta.state = 'ended'; meta.endedAt = Date.now();
   await putMeta(r().multi(), meta)
-    .expire(k + ':players', ENDED_TTL).expire(k + ':names', ENDED_TTL).expire(k + ':online', ENDED_TTL)
+    .expire(k + ':players', ENDED_TTL).expire(k + ':names', ENDED_TTL).expire(k + ':online', ENDED_TTL).expire(k + ':sock', ENDED_TTL)
     .exec();
 }
 
@@ -227,7 +234,7 @@ async function close(pin) {
   return res;
 }
 
-async function answer(pin, playerId, rawChoice) {
+async function answer(pin, playerId, rawChoice, sid) {
   const meta = await getMeta(pin);
   if (!meta) return { error: 'Not in a quiz' };
   const now = Date.now(); // timing is measured on the server
@@ -244,8 +251,11 @@ async function answer(pin, playerId, rawChoice) {
   const aKey = k + ':a:' + meta.qIndex;
   const fresh = await r().hsetnx(aKey, id, JSON.stringify({ choice, ms: Math.max(0, now - meta.qStart) }));
   if (!fresh) return { error: 'Already answered' };
-  const res = await r().pipeline().expire(aKey, GAME_TTL).hlen(aKey).scard(k + ':online').exec();
-  const answered = res[1][1], online = res[2][1];
+  // a player who answers is clearly connected: make sure they count as online on this connection
+  const pipe = r().pipeline().sadd(k + ':online', id);
+  if (sid) pipe.hset(k + ':sock', id, String(sid));
+  const res = await pipe.expire(aKey, GAME_TTL).hlen(aKey).scard(k + ':online').exec();
+  const answered = res[res.length - 2][1], online = res[res.length - 1][1];
   if (online > 0 && answered >= online) await advance(pin, { state: 'question', index: meta.qIndex });
   else await publish(pin, 'host');
   return { ok: true };
@@ -258,7 +268,7 @@ async function kick(pin, playerId) {
   if (!j) return { error: 'Player not found' };
   const p = JSON.parse(j);
   const meta = await getMeta(pin);
-  const pipe = r().pipeline().hdel(k + ':players', id).hdel(k + ':names', p.name.toLowerCase()).srem(k + ':online', id);
+  const pipe = r().pipeline().hdel(k + ':players', id).hdel(k + ':names', p.name.toLowerCase()).srem(k + ':online', id).hdel(k + ':sock', id);
   if (meta && meta.qIndex >= 0) pipe.hdel(k + ':a:' + meta.qIndex, id);
   await pipe.exec();
   await publish(pin, 'state');
