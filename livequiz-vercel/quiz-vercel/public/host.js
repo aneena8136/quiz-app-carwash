@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var SHAPES = ['▲', '◆', '●', '■'];
+  var LETTERS = ['A', 'B', 'C', 'D'];
   var PIN_KEY = 'livequiz.hostpin';
   // every API call goes to the single Vercel Function at /api/server, with the route in ?__path=
   function apiUrl(route) { return '/api/server?__path=' + encodeURIComponent(route.replace(/^\//, '')); }
@@ -70,14 +70,18 @@
     if (!quizzes.length) box.appendChild(el('p', 'muted', 'No quizzes yet. Create your first one.'));
     quizzes.forEach(function (q) {
       var row = el('div', 'quiz-item');
-      var info = el('div');
+      var cover = q.questions.map(function (x) { return x.image; }).filter(Boolean)[0];
+      var thumb = el(cover ? 'img' : 'div', 'quiz-cover' + (cover ? '' : ' empty'), cover ? undefined : q.title.trim().charAt(0).toUpperCase());
+      if (cover) { thumb.src = cover; thumb.alt = ''; }
+      var info = el('div', 'quiz-info');
       info.appendChild(el('div', 'name', q.title));
-      info.appendChild(el('div', 'muted', q.questions.length + ' question' + (q.questions.length === 1 ? '' : 's')));
-      var start = el('button', 'btn accent', '▶ Host live');
+      info.appendChild(el('div', 'muted small', q.questions.length + ' question' + (q.questions.length === 1 ? '' : 's')));
+      row.appendChild(thumb);
+      var start = el('button', 'btn', 'Host live');
       start.addEventListener('click', function () { hostQuiz(q.id); });
-      var edit = el('button', 'btn small ghost', 'Edit');
+      var edit = el('button', 'btn small secondary', 'Edit');
       edit.addEventListener('click', function () { openEditor(q); });
-      var del = el('button', 'btn small danger', 'Delete');
+      var del = el('button', 'btn small subtle-danger', 'Delete');
       del.addEventListener('click', function () {
         if (del.dataset.sure !== '1') { del.dataset.sure = '1'; del.textContent = 'Really delete?'; return; }
         api('DELETE', '/quizzes/' + q.id).then(loadQuizzes).catch(function (err) { $('list-error').textContent = err.message; });
@@ -142,7 +146,7 @@
       var card = el('div', 'qcard');
       var head = el('div', 'row between');
       head.appendChild(el('h3', '', 'Question ' + (qi + 1)));
-      var rm = el('button', 'btn small danger', 'Remove');
+      var rm = el('button', 'btn small subtle-danger', 'Remove');
       rm.disabled = draft.questions.length === 1;
       rm.addEventListener('click', function () { draft.questions.splice(qi, 1); renderQuestions(); });
       head.appendChild(rm);
@@ -154,16 +158,19 @@
       if (q.image) { thumb = el('img', 'thumb'); thumb.src = q.image; thumb.alt = 'Question image'; }
       else thumb = el('div', 'thumb empty', 'No image');
       var file = el('input'); file.type = 'file'; file.accept = 'image/jpeg,image/png,image/webp,image/gif';
-      var status = el('span', 'muted', '');
+      file.id = 'file-' + qi; file.className = 'visually-hidden';
+      var fileBtn = el('label', 'btn small secondary', q.image ? 'Replace image' : 'Upload image');
+      fileBtn.htmlFor = file.id;
+      var status = el('span', 'muted small', '');
       file.addEventListener('change', function () {
         if (!file.files[0]) return;
         status.textContent = 'Uploading…';
         uploadImage(file.files[0]).then(function (url) { q.image = url; renderQuestions(); })
           .catch(function (err) { status.textContent = err.message; status.className = 'error'; });
       });
-      pick.appendChild(thumb); pick.appendChild(file);
+      pick.appendChild(thumb); pick.appendChild(file); pick.appendChild(fileBtn);
       if (q.image) {
-        var clr = el('button', 'btn small ghost', 'Remove image');
+        var clr = el('button', 'btn small secondary', 'Remove image');
         clr.addEventListener('click', function () { q.image = ''; renderQuestions(); });
         pick.appendChild(clr);
       }
@@ -176,7 +183,8 @@
       text.addEventListener('input', function () { q.text = text.value; });
       card.appendChild(text);
 
-      card.appendChild(el('label', '', 'Answer options - select the correct one (leave 3 or 4 empty to use fewer)'));
+      card.appendChild(el('label', '', 'Answer options'));
+      card.appendChild(el('p', 'hint', 'Select the circle next to the correct answer. Leave C or D empty to use fewer options.'));
       q.options.forEach(function (opt, oi) {
         var row = el('div', 'opt-row');
         var radio = el('input'); radio.type = 'radio'; radio.name = 'correct-' + qi; radio.checked = q.correct === oi;
@@ -185,7 +193,7 @@
         var input = el('input'); input.type = 'text'; input.maxLength = 120; input.value = opt;
         input.placeholder = 'Option ' + (oi + 1);
         input.addEventListener('input', function () { q.options[oi] = input.value; });
-        row.appendChild(radio); row.appendChild(el('span', 'tag o' + oi, SHAPES[oi])); row.appendChild(input);
+        row.appendChild(radio); row.appendChild(el('span', 'tag o' + oi, LETTERS[oi])); row.appendChild(input);
         card.appendChild(row);
       });
 
@@ -262,13 +270,19 @@
     show('list');
   });
 
-  function startTimer(ms) {
+  function startTimer(ms, totalMs) {
     clearInterval(tick);
     var end = Date.now() + ms;
+    var bar = $('s-bar');
+    bar.style.transition = 'none';
+    bar.style.width = Math.min(100, (ms / totalMs) * 100) + '%';
+    void bar.offsetWidth;
+    bar.style.transition = 'width ' + ms + 'ms linear';
+    bar.style.width = '0%';
     function draw() {
       var left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      $('s-timer').textContent = left;
-      $('s-timer').classList.toggle('low', left <= 5);
+      $('s-timer').textContent = left + 's';
+      $('g-stage').classList.toggle('low', left <= 5);
       if (left <= 0) {
         clearInterval(tick);
         // safety net: tell the server time is up in case its own timer did not fire
@@ -280,12 +294,12 @@
   }
   function board(box, rows) {
     box.textContent = '';
-    if (!rows.length) box.appendChild(el('p', 'light center', 'No players'));
+    if (!rows.length) box.appendChild(el('p', 'muted center', 'No players'));
     rows.forEach(function (p, i) {
       var r = el('div', 'board-row' + (i === 0 ? ' first' : ''));
       r.appendChild(el('span', 'pos', i + 1));
       r.appendChild(el('span', 'nm', p.name));
-      r.appendChild(el('span', '', p.score));
+      r.appendChild(el('span', 'sc', p.score.toLocaleString()));
       box.appendChild(r);
     });
   }
@@ -302,7 +316,10 @@
     if (s.state === 'lobby') {
       $('g-url').textContent = location.host;
       $('g-pin').textContent = s.pin;
-      $('g-count').textContent = s.players.length + ' player' + (s.players.length === 1 ? '' : 's') + ' joined';
+      $('g-title').textContent = s.title;
+      $('g-count').textContent = s.players.length;
+      $('g-count-label').textContent = s.players.length === 1 ? 'player joined' : 'players joined';
+      $('g-empty').classList.toggle('hidden', s.players.length > 0);
       var chips = $('g-players');
       chips.textContent = '';
       s.players.forEach(function (p) {
@@ -322,34 +339,40 @@
 
     // question or reveal
     var reveal = s.state === 'reveal';
-    $('s-count').textContent = 'Question ' + (s.index + 1) + ' of ' + s.total + '  ·  PIN ' + s.pin;
+    $('s-count').textContent = 'Question ' + (s.index + 1) + ' / ' + s.total;
+    $('s-pin').textContent = 'PIN ' + s.pin;
     $('s-answered').textContent = s.answered + ' / ' + s.players.length + ' answered';
     $('s-text').textContent = s.text;
+    $('s-text').classList.toggle('hidden', !s.text);
     var img = $('s-image');
-    if (s.image) { if (img.getAttribute('src') !== s.image) img.src = s.image; img.classList.remove('hidden'); }
-    else { img.classList.add('hidden'); img.removeAttribute('src'); }
+    if (s.image) { if (img.getAttribute('src') !== s.image) img.src = s.image; $('s-media').classList.remove('hidden'); }
+    else { $('s-media').classList.add('hidden'); img.removeAttribute('src'); }
+    $('g-stage').classList.toggle('revealed', reveal);
     var box = $('s-options');
     box.textContent = '';
     s.options.forEach(function (text, i) {
       var o = el('div', 'opt o' + i);
-      o.appendChild(el('span', 'shape', SHAPES[i]));
-      o.appendChild(el('span', '', text));
+      o.appendChild(el('span', 'letter', LETTERS[i]));
+      o.appendChild(el('span', 'label', text));
       if (reveal) {
         if (i === s.correct) o.classList.add('right'); else o.classList.add('dim');
-        var c = el('span', 'count', s.counts[i]);
-        o.insertBefore(c, null);
+        var total = s.counts.reduce(function (a, b) { return a + b; }, 0) || 1;
+        var fill = el('span', 'fill'); fill.style.width = Math.round((s.counts[i] / total) * 100) + '%';
+        o.insertBefore(fill, o.firstChild);
+        o.appendChild(el('span', 'count', s.counts[i]));
       }
       box.appendChild(o);
     });
     if (reveal) {
       clearInterval(tick);
-      $('s-timer').textContent = '✓';
-      $('s-timer').classList.remove('low');
+      $('s-timer').textContent = 'Done';
+      $('g-stage').classList.remove('low');
+      var bar = $('s-bar'); bar.style.transition = 'none'; bar.style.width = '0%';
       $('next-btn').textContent = s.index + 1 < s.total ? 'Next question →' : 'Show final results →';
       board($('s-board'), s.leaderboard.slice(0, 5));
     } else {
-      $('next-btn').textContent = 'Reveal answer now';
-      if (!prev || prev.state !== 'question' || prev.index !== s.index) startTimer(s.remainingMs);
+      $('next-btn').textContent = 'Reveal answer';
+      if (!prev || prev.state !== 'question' || prev.index !== s.index) startTimer(s.remainingMs, s.time * 1000);
     }
     $('s-board-wrap').classList.toggle('hidden', !reveal);
   }

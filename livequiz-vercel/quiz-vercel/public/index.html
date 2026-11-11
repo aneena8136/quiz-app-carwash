@@ -3,63 +3,79 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7fb">
   <title>Join the Quiz</title>
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-  <div class="wrap">
-    <div class="brand">Live<span>Quiz</span></div>
+<body class="player">
+  <header class="appbar">
+    <div class="logo"><span class="mark">Q</span>LiveQuiz</div>
+    <span class="pill hidden" id="hdr-score">0 pts</span>
+  </header>
 
+  <main class="wrap">
     <!-- Join -->
-    <section id="v-join" class="card">
+    <section id="v-join" class="card join">
+      <h1>Join a quiz</h1>
+      <p class="muted">Enter the PIN on the host’s screen.</p>
       <form id="join-form" autocomplete="off">
         <label for="pin">Game PIN</label>
-        <input id="pin" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" required>
+        <input id="pin" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" required>
         <label for="name">Your name</label>
         <input id="name" type="text" maxlength="20" placeholder="e.g. Priya" required>
-        <button class="btn block big" type="submit" id="join-btn">Join</button>
+        <button class="btn block big" type="submit" id="join-btn">Join quiz</button>
         <div class="error" id="join-error" role="alert"></div>
       </form>
     </section>
 
     <!-- Lobby -->
     <section id="v-lobby" class="card center hidden">
-      <div class="big-emoji">🎉</div>
-      <h2>You're in, <span id="lobby-name"></span>!</h2>
+      <div class="live-dot" aria-hidden="true"></div>
+      <h2>You’re in, <span id="lobby-name"></span></h2>
       <p class="muted" id="lobby-title"></p>
-      <p class="pulse">Waiting for the quiz master to start…</p>
+      <p class="chip-soft" id="lobby-count"></p>
+      <p class="muted small">Waiting for the host to start…</p>
     </section>
 
     <!-- Question -->
     <section id="v-question" class="hidden">
-      <div class="q-meta"><span id="q-count"></span><span class="timer" id="q-timer"></span></div>
-      <div class="q-text" id="q-text"></div>
-      <img class="q-image hidden" id="q-image" alt="Question image">
+      <div class="q-head">
+        <span class="pill soft" id="q-count"></span>
+        <span class="timer" id="q-timer"></span>
+      </div>
+      <div class="timebar"><span id="q-bar"></span></div>
+      <h2 class="q-text" id="q-text"></h2>
+      <figure class="q-media hidden" id="q-media"><img id="q-image" alt="Question image"></figure>
       <div class="options" id="q-options"></div>
-      <p class="center light pulse hidden" id="q-wait">Answer locked in. Waiting for the others…</p>
+      <p class="waiting hidden" id="q-wait"><span class="spinner" aria-hidden="true"></span><span id="q-wait-text">Answer locked in. Waiting for others…</span></p>
     </section>
 
     <!-- Result -->
-    <section id="v-reveal" class="card center hidden">
-      <div class="big-emoji" id="r-emoji"></div>
+    <section id="v-reveal" class="card center result hidden">
+      <div class="result-icon" id="r-icon"></div>
       <h2 id="r-title"></h2>
-      <p class="muted" id="r-answer"></p>
-      <div class="stat" id="r-points"></div>
-      <p>Total score: <b id="r-score"></b> · Rank <b id="r-rank"></b></p>
-      <p class="muted pulse">Next question coming up…</p>
+      <p class="muted small">Correct answer</p>
+      <p class="answer" id="r-answer"></p>
+      <div class="points" id="r-points"></div>
+      <div class="stats">
+        <div><span class="stat-label">Total</span><span class="stat-value" id="r-score"></span></div>
+        <div><span class="stat-label">Rank</span><span class="stat-value"><span id="r-rank"></span> <small id="r-of"></small></span></div>
+      </div>
+      <p class="muted small">Next question coming up…</p>
     </section>
 
     <!-- Final -->
     <section id="v-ended" class="card center hidden">
-      <div class="big-emoji">🏆</div>
-      <h2>Quiz finished!</h2>
-      <p>You placed <b id="f-rank"></b> with <b id="f-score"></b> points.</p>
-      <div id="f-top"></div>
-      <button class="btn block" id="again-btn">Join another quiz</button>
+      <p class="eyebrow">Final result</p>
+      <div class="rank-big" id="f-rank"></div>
+      <p class="muted" id="f-of"></p>
+      <p class="score-line"><b id="f-score"></b> points</p>
+      <div class="board compact" id="f-top"></div>
+      <button class="btn block secondary" id="again-btn">Join another quiz</button>
     </section>
 
-    <p class="center light hidden" id="conn">Reconnecting…</p>
-  </div>
+    <p class="toast hidden" id="conn"><span class="spinner" aria-hidden="true"></span>Reconnecting…</p>
+  </main>
   <script src="/socket.io.min.js"></script>
   <script src="/player.js"></script>
 </body>
