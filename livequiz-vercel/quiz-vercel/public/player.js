@@ -135,8 +135,6 @@
       $('r-answer').textContent = s.correctText;
       $('r-points').textContent = '+' + s.points.toLocaleString();
       $('r-score').textContent = s.score.toLocaleString();
-      $('r-rank').textContent = ordinal(s.rank);
-      $('r-of').textContent = 'of ' + s.playerCount;
       show('reveal');
     } else if (s.state === 'ended') {
       $('f-rank').textContent = ordinal(s.rank);

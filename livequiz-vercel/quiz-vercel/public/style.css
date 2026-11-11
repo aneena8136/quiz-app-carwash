@@ -199,6 +199,7 @@ div.opt.o0:hover, div.opt.o1:hover, div.opt.o2:hover, div.opt.o3:hover { border-
 .points { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); line-height: 1.1; margin-bottom: 18px; font-variant-numeric: tabular-nums; }
 .result.bad .points, .result.none .points { color: var(--muted); }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stats.single { grid-template-columns: 1fr; }
 .stats > div { background: var(--surface-2); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
 .stat-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .stat-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }

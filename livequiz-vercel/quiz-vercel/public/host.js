@@ -400,12 +400,11 @@
       $('g-stage').classList.remove('low');
       var bar = $('s-bar'); bar.style.transition = 'none'; bar.style.width = '0%';
       $('next-btn').textContent = s.index + 1 < s.total ? 'Next question →' : 'Show final results →';
-      board($('s-board'), s.leaderboard.slice(0, 5));
     } else {
       $('next-btn').textContent = 'Reveal answer';
       if (!prev || prev.state !== 'question' || prev.index !== s.index) startTimer(s.remainingMs, s.time * 1000);
     }
-    $('s-board-wrap').classList.toggle('hidden', !reveal);
+    $('s-board-wrap').classList.add('hidden'); // the ranking is shown only on the final results screen
   }
 
   // ---------- boot ----------
