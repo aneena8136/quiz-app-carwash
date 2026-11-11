@@ -3,6 +3,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var LETTERS = ['A', 'B', 'C', 'D'];
   var KEY = 'livequiz.player';
+  var me = null; // this tab's player { pin, playerId, name }
   var views = ['join', 'lobby', 'question', 'reveal', 'ended'];
   // Vercel needs the WebSocket transport and the function's path
   var socket = io({ path: '/api/server', addTrailingSlash: false, transports: ['websocket'], reconnectionDelay: 300, reconnectionDelayMax: 3000 });
@@ -13,8 +14,38 @@
     views.forEach(function (v) { $('v-' + v).classList.toggle('hidden', v !== name); });
     $('hdr-score').classList.toggle('hidden', name === 'join');
   }
-  function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
-  function save(v) { try { v ? localStorage.setItem(KEY, JSON.stringify(v)) : localStorage.removeItem(KEY); } catch (e) {} }
+  // Each browser tab keeps its own player (sessionStorage), so two players in one browser don't mix.
+  // The last player is also kept in localStorage so a phone can resume after its tab was closed,
+  // but only if no other open tab is still using that player (checked with a heartbeat).
+  function hbKey(id) { return KEY + '.hb.' + id; }
+  function load() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem(KEY));
+      if (s && s.playerId) return s;
+      var l = JSON.parse(localStorage.getItem(KEY));
+      if (l && l.playerId && Date.now() - (Number(localStorage.getItem(hbKey(l.playerId))) || 0) > 6000) return l;
+    } catch (e) {}
+    return null;
+  }
+  function save(v) {
+    var old = me;
+    me = v;
+    try {
+      if (v) {
+        sessionStorage.setItem(KEY, JSON.stringify(v));
+        localStorage.setItem(KEY, JSON.stringify(v));
+        localStorage.setItem(hbKey(v.playerId), String(Date.now()));
+      } else {
+        sessionStorage.removeItem(KEY);
+        if (old) {
+          localStorage.removeItem(hbKey(old.playerId));
+          var l = JSON.parse(localStorage.getItem(KEY) || 'null');
+          if (l && l.playerId === old.playerId) localStorage.removeItem(KEY);
+        }
+      }
+    } catch (e) {}
+  }
+  setInterval(function () { if (me) { try { localStorage.setItem(hbKey(me.playerId), String(Date.now())); } catch (e) {} } }, 2000);
   function ordinal(n) {
     var s = ['th', 'st', 'nd', 'rd'], v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -76,7 +107,7 @@
     if (!current || current.state !== 'question' || current.choice != null) return;
     current.choice = i;
     renderQuestion(current);
-    var me = load() || {};
+    if (!me) return;
     socket.emit('player:answer', { pin: me.pin, playerId: me.playerId, choice: i }, function (res) {
       if (res && res.error && res.error !== 'Already answered' && current && current.state === 'question') {
         $('q-wait-text').textContent = res.error;
@@ -154,10 +185,19 @@
   socket.on('disconnect', function () { $('conn').classList.remove('hidden'); });
   socket.on('connect', function () {
     $('conn').classList.add('hidden');
-    var saved = load();
+    var saved = me || load();
     if (!saved) return;
     // rejoin automatically after a refresh or a dropped connection
     socket.emit('player:join', { pin: saved.pin, playerId: saved.playerId }, function (res) {
+      if (res && res.gone) { me = saved; reset(''); return; }
+      if (res && res.ok) save(saved);
+    });
+  });
+
+  // When a phone wakes up (screen on / app back in front), re-sync in case updates were missed while asleep.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible' || !me || !socket.connected) return;
+    socket.emit('player:join', { pin: me.pin, playerId: me.playerId }, function (res) {
       if (res && res.gone) reset('');
     });
   });

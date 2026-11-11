@@ -51,6 +51,7 @@
   $('logout-btn').addEventListener('click', function () {
     api('POST', '/host/logout').catch(function () {}).then(function () {
       if (socket) { socket.disconnect(); socket = null; }
+      showConn(false);
       show('login');
     });
   });
@@ -78,7 +79,7 @@
       info.appendChild(el('div', 'muted small', q.questions.length + ' question' + (q.questions.length === 1 ? '' : 's')));
       row.appendChild(thumb);
       var start = el('button', 'btn', 'Host live');
-      start.addEventListener('click', function () { hostQuiz(q.id); });
+      start.addEventListener('click', function () { hostQuiz(q.id, start); });
       var edit = el('button', 'btn small secondary', 'Edit');
       edit.addEventListener('click', function () { openEditor(q); });
       var del = el('button', 'btn small subtle-danger', 'Delete');
@@ -232,19 +233,49 @@
   });
 
   // ---------- live game ----------
+  // Send an event and wait for the server's reply. If no reply comes within a few seconds the
+  // connection has probably gone silent, so reconnect and try once more instead of doing nothing.
+  function call(event, data, cb, retried) {
+    if (!socket) return cb({ error: 'Not connected. Please reload the page.' });
+    socket.timeout(6000).emit(event, data, function (err, res) {
+      if (!err) return cb(res || {});
+      if (retried) return cb({ error: 'Can’t reach the quiz server. Check your internet connection and try again.' });
+      showConn(true);
+      socket.once('connect', function () { call(event, data, cb, true); });
+      socket.disconnect();
+      socket.connect();
+    });
+  }
+  function showConn(on) { $('conn').classList.toggle('hidden', !on); }
+
   function connect() {
     if (socket) return;
     socket = io('/host', SOCKET_OPTS);
     socket.on('state', renderGame);
+    socket.on('disconnect', function (reason) { if (reason !== 'io client disconnect') showConn(true); });
     socket.on('connect', function () {
+      showConn(false);
       var pin = getPin();
       if (pin) socket.emit('host:resume', { pin: pin }, function (res) { if (res && res.error) { setPin(null); game = null; show('list'); } });
     });
     socket.on('connect_error', function (err) { if (err && err.message === 'unauthorized') { socket.disconnect(); socket = null; show('login'); } });
   }
-  function hostQuiz(id) {
+  var creating = false;
+  // Safety net: every 5 seconds re-read the game, in case a live update was missed.
+  setInterval(function () {
+    var pin = getPin();
+    if (socket && socket.connected && pin && game && game.state !== 'ended') socket.emit('host:resume', { pin: pin }, function () {});
+  }, 5000);
+
+  function hostQuiz(id, btn) {
+    if (creating) return;
+    creating = true;
     $('list-error').textContent = '';
-    socket.emit('host:create', { quizId: id }, function (res) {
+    var label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+    call('host:create', { quizId: id }, function (res) {
+      creating = false;
+      if (btn) { btn.disabled = false; btn.textContent = label; }
       if (res.error) { $('list-error').textContent = res.error; return; }
       setPin(res.pin);
     });
@@ -254,7 +285,7 @@
     data = data || {};
     data.pin = getPin();
     if (game) { data.state = game.state; data.index = game.index; } // lets the server ignore double clicks
-    socket.emit(event, data, function (res) { if (res && res.error) $('game-error').textContent = res.error; });
+    call(event, data, function (res) { if (res && res.error) $('game-error').textContent = res.error; });
   }
   $('start-btn').addEventListener('click', function () { act('host:next'); });
   $('next-btn').addEventListener('click', function () { act('host:next'); });
