@@ -165,10 +165,10 @@ async function doReveal(meta) {
   for (const p of players.values()) {
     const a = answers.get(p.id);
     const isCorrect = !!a && a.choice === q.correct;
-    // 500 base points + up to 500 speed bonus
-    const points = isCorrect ? Math.round(500 + 500 * Math.max(0, 1 - a.ms / (q.time * 1000))) : 0;
+    // 10 points for a correct answer + up to 10 more for answering fast (10-20 per question)
+    const points = isCorrect ? Math.round(10 + 10 * Math.max(0, 1 - a.ms / (q.time * 1000))) : 0;
     p.score += points;
-    if (isCorrect) p.correctCount++;
+    if (isCorrect) { p.correctCount++; p.correctMs = (p.correctMs || 0) + a.ms; }
     p.last = { qIndex: meta.qIndex, choice: a ? a.choice : null, isCorrect, points };
     pipe.hset(k + ':players', p.id, JSON.stringify(p));
   }
@@ -264,7 +264,8 @@ async function kick(pin, playerId) {
 
 // ---------- views ----------
 function ranking(g) {
-  return [...g.players.values()].sort((a, b) => b.score - a.score || a.joinedAt - b.joinedAt);
+  // equal scores: whoever answered their correct questions faster in total ranks higher
+  return [...g.players.values()].sort((a, b) => b.score - a.score || (a.correctMs || 0) - (b.correctMs || 0) || a.joinedAt - b.joinedAt);
 }
 const topN = (g, n) => ranking(g).slice(0, n).map((p) => ({ name: p.name, score: p.score }));
 
