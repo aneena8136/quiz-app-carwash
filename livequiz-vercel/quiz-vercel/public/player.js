@@ -50,6 +50,18 @@
     var s = ['th', 'st', 'nd', 'rd'], v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   }
+  // Send an event and wait for the reply. If none comes within a few seconds the connection has
+  // probably gone silent (Vercel recycles connections), so reconnect and try once more.
+  function call(event, data, cb, retried) {
+    socket.timeout(5000).emit(event, data, function (err, res) {
+      if (!err) return cb(res || {});
+      if (retried) return cb({ error: 'Could not reach the quiz. Check your connection and try again.' });
+      $('conn').classList.remove('hidden');
+      socket.once('connect', function () { call(event, data, cb, true); });
+      socket.disconnect();
+      socket.connect();
+    });
+  }
   function setScore(score) { $('hdr-score').textContent = (score || 0).toLocaleString() + ' pts'; }
 
   // shrinking time bar + seconds counter
@@ -108,7 +120,7 @@
     current.choice = i;
     renderQuestion(current);
     if (!me) return;
-    socket.emit('player:answer', { pin: me.pin, playerId: me.playerId, choice: i }, function (res) {
+    call('player:answer', { pin: me.pin, playerId: me.playerId, choice: i }, function (res) {
       if (res && res.error && res.error !== 'Already answered' && current && current.state === 'question') {
         $('q-wait-text').textContent = res.error;
       }
@@ -168,9 +180,8 @@
     $('join-error').textContent = '';
     $('join-btn').disabled = true;
     var pin = $('pin').value.trim(), name = $('name').value.trim();
-    socket.timeout(8000).emit('player:join', { pin: pin, name: name }, function (err, res) {
+    call('player:join', { pin: pin, name: name }, function (res) {
       $('join-btn').disabled = false;
-      if (err) { $('join-error').textContent = 'Could not reach the quiz. Check your connection and try again.'; return; }
       if (res.error) { $('join-error').textContent = res.error; return; }
       save({ pin: pin, playerId: res.playerId, name: res.name });
     });
