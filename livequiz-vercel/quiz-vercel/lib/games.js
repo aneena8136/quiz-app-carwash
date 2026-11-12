@@ -78,7 +78,7 @@ const QUESTION_TIME = 20; // every question gets 20 seconds, whatever the saved 
 async function createGame(quiz) {
   quiz = { ...quiz, questions: quiz.questions.map((q) => ({ ...q, time: QUESTION_TIME })) };
   for (let i = 0; i < 20; i++) {
-    const pin = String(crypto.randomInt(100000, 1000000));
+    const pin = String(crypto.randomInt(1000, 10000)); // 4-digit game PIN
     const meta = { pin, quiz, state: 'lobby', qIndex: -1, qStart: 0, qEnd: 0, createdAt: Date.now(), endedAt: 0 };
     if (await r().set(gk(pin), JSON.stringify(meta), 'EX', GAME_TTL, 'NX')) return pin;
   }
