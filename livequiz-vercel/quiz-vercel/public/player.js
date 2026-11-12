@@ -212,5 +212,5 @@
   });
 
   var q = new URLSearchParams(location.search).get('pin');
-  if (q) $('pin').value = q.replace(/\D/g, '').slice(0, 6);
+  if (q) $('pin').value = q.replace(/\D/g, '').slice(0, 4);
 })();
