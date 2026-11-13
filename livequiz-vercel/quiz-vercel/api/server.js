@@ -226,9 +226,17 @@ if (!ON_VERCEL) {
 const server = http.createServer(app);
 const io = new Server(server, {
   path: '/api/server', addTrailingSlash: false, transports: ['websocket'], serveClient: false,
-  // short heartbeat: Vercel recycles connections, so notice a dead one within ~15 seconds
-  maxHttpBufferSize: 20000, pingInterval: 10000, pingTimeout: 5000,
+  // heartbeat: notice a dead connection within ~20 seconds, but tolerate a busy phone or network for 10
+  maxHttpBufferSize: 20000, pingInterval: 10000, pingTimeout: 10000,
 });
+
+// Vercel silently cuts a connection after about 5 minutes. Browsers are told to swap to a fresh
+// connection a little earlier, each at a random moment, so nobody sits on a dead line mid-question.
+const RECYCLE = (() => {
+  const m = /^(\d+)-(\d+)$/.exec(process.env.CONN_RECYCLE_SEC || (ON_VERCEL ? '200-260' : ''));
+  return m && Number(m[1]) >= 5 && Number(m[2]) >= Number(m[1]) ? [Number(m[1]), Number(m[2])] : null;
+})();
+const OFFLINE_GRACE_MS = 3000; // a player who is only swapping connections is never counted as offline
 const hostNs = io.of('/host');
 
 /*
@@ -325,11 +333,13 @@ hostNs.use((socket, next) => (sessionValid(socket.request.headers.cookie) ? next
 
 hostNs.on('connection', (socket) => {
   games.subscribe(onEvent);
+  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE });
 
   socket.on('host:create', guard(async (data, cb) => {
     const quiz = await games.getQuiz(data.quizId);
     if (!quiz) return reply(cb, { error: 'Quiz not found' });
-    const pin = await games.createGame(quiz);
+    // the same click can arrive twice (it is re-sent after a silent connection): the request id keeps it one game
+    const pin = await games.createGame(quiz, String(data.requestId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40));
     socket.join(hostRoom(pin));
     reply(cb, { ok: true, pin });
     await refresh(pin, false);
@@ -368,6 +378,7 @@ hostNs.on('connection', (socket) => {
 // ----- players -----
 io.on('connection', (socket) => {
   games.subscribe(onEvent);
+  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE });
   const ip = String(socket.handshake.headers['x-forwarded-for'] || socket.handshake.address).split(',')[0].trim();
   let failures = 0;
 
@@ -401,7 +412,9 @@ io.on('connection', (socket) => {
   }));
 
   socket.on('disconnect', () => {
-    if (socket.data.pin && socket.data.playerId) games.setOffline(socket.data.pin, socket.data.playerId, socket.id).catch(() => {});
+    const pin = socket.data.pin, playerId = socket.data.playerId;
+    if (!pin || !playerId) return;
+    setTimeout(() => games.setOffline(pin, playerId, socket.id).catch(() => {}), OFFLINE_GRACE_MS);
   });
 });
 
