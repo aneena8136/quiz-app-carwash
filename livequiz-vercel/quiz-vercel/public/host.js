@@ -245,7 +245,15 @@
     if (socket) return;
     socket = io('/host', SOCKET_OPTS);
     socket.on('state', renderGame);
-    socket.on('disconnect', function (reason) { if (reason !== 'io client disconnect') showConn(true); });
+    // swap to a fresh connection shortly before Vercel's 5-minute cut (the server says when)
+    socket.on('cfg', function (c) {
+      clearTimeout(recycleTimer);
+      if (!c || !c.recycle) return;
+      recycleTimer = setTimeout(function () {
+        if (socket && socket.connected) { socket.disconnect(); socket.connect(); }
+      }, (c.recycle[0] + Math.random() * (c.recycle[1] - c.recycle[0])) * 1000);
+    });
+    socket.on('disconnect', function (reason) { clearTimeout(recycleTimer); if (reason !== 'io client disconnect') showConn(true); });
     socket.on('connect', function () {
       showConn(false);
       var pin = getPin();
@@ -253,7 +261,7 @@
     });
     socket.on('connect_error', function (err) { if (err && err.message === 'unauthorized') { socket.disconnect(); socket = null; show('login'); } });
   }
-  var creating = false;
+  var creating = false, recycleTimer = null;
   // Safety net: every 5 seconds re-read the game, in case a live update was missed.
   setInterval(function () {
     var pin = getPin();
@@ -266,7 +274,9 @@
     $('list-error').textContent = '';
     var label = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
-    call('host:create', { quizId: id }, function (res) {
+    // one id per click: if the request has to be sent again, the server still starts only one game
+    var rid = Array.prototype.map.call(crypto.getRandomValues(new Uint8Array(12)), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    call('host:create', { quizId: id, requestId: rid }, function (res) {
       creating = false;
       if (btn) { btn.disabled = false; btn.textContent = label; }
       if (res.error) { $('list-error').textContent = res.error; return; }

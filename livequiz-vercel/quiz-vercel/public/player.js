@@ -53,7 +53,9 @@
   // Send an event and wait for the reply. If none comes within a few seconds the connection has
   // probably gone silent (Vercel recycles connections), so reconnect and try once more.
   function call(event, data, cb, retried) {
+    pending++;
     socket.timeout(5000).emit(event, data, function (err, res) {
+      pending--;
       if (!err) return cb(res || {});
       if (retried) return cb({ error: 'Could not reach the quiz. Check your connection and try again.' });
       $('conn').classList.remove('hidden');
@@ -191,8 +193,27 @@
 
   socket.on('state', render);
   socket.on('kicked', function () { reset('You were removed from the quiz by the quiz master.'); });
-  socket.on('disconnect', function () { $('conn').classList.remove('hidden'); });
+  // Vercel silently cuts a connection after about 5 minutes. The server says when to swap to a fresh
+  // one shortly before that (every player at a different random moment), so nobody sits on a dead line.
+  var pending = 0, recycleTimer = null, recycleMax = 0, connectedAt = 0;
+  function recycle() {
+    clearTimeout(recycleTimer);
+    if (pending > 0) { recycleTimer = setTimeout(recycle, 1000); return; } // let an answer finish first
+    socket.disconnect();
+    socket.connect();
+  }
+  socket.on('cfg', function (c) {
+    clearTimeout(recycleTimer);
+    if (!c || !c.recycle) return;
+    recycleMax = c.recycle[1] * 1000;
+    recycleTimer = setTimeout(recycle, (c.recycle[0] + Math.random() * (c.recycle[1] - c.recycle[0])) * 1000);
+  });
+  socket.on('disconnect', function (reason) {
+    clearTimeout(recycleTimer);
+    if (reason !== 'io client disconnect') $('conn').classList.remove('hidden');
+  });
   socket.on('connect', function () {
+    connectedAt = Date.now();
     $('conn').classList.add('hidden');
     var saved = me || load();
     if (!saved) return;
@@ -206,7 +227,10 @@
   // When a phone wakes up (screen on / app back in front), re-sync in case updates were missed while asleep.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !me || !socket.connected) return;
-    socket.emit('player:join', { pin: me.pin, playerId: me.playerId }, function (res) {
+    // asleep past the swap time, or no reply: this connection is dead, so start a fresh one straight away
+    if (recycleMax && Date.now() - connectedAt > recycleMax) { recycle(); return; }
+    socket.timeout(4000).emit('player:join', { pin: me.pin, playerId: me.playerId }, function (err, res) {
+      if (err) { recycle(); return; }
       if (res && res.gone) reset('');
     });
   });
