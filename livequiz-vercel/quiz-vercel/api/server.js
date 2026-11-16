@@ -237,6 +237,36 @@ const RECYCLE = (() => {
   return m && Number(m[1]) >= 5 && Number(m[2]) >= Number(m[1]) ? [Number(m[1]), Number(m[2])] : null;
 })();
 const OFFLINE_GRACE_MS = 3000; // a player who is only swapping connections is never counted as offline
+
+// ---------- monitoring: one log line per instance every 10 s while people are connected ----------
+// Shows in the Vercel logs how many connections an instance holds, why connections ended, whether the
+// instance was held up (loopLagMs), how fast the database answers, and how many connections have gone
+// quiet or have data waiting to be sent. No personal data.
+const INSTANCE = crypto.randomBytes(3).toString('hex');
+const health = { opened: 0, closed: {}, lagMax: 0, pushes: 0, pushMs: 0 };
+let lastBeat = Date.now();
+setInterval(() => { const now = Date.now(); health.lagMax = Math.max(health.lagMax, now - lastBeat - 1000); lastBeat = now; }, 1000).unref();
+io.engine.on('connection', (raw) => {
+  health.opened++;
+  raw.lqHeard = Date.now();
+  raw.on('packet', () => { raw.lqHeard = Date.now(); });
+  raw.once('close', (reason) => { health.closed[reason] = (health.closed[reason] || 0) + 1; });
+});
+setInterval(() => {
+  const connections = io.engine.clientsCount;
+  if (!connections && !health.opened && !Object.keys(health.closed).length) return;
+  const now = Date.now();
+  let quiet = 0, waiting = 0, waitingBytes = 0;
+  for (const raw of Object.values(io.engine.clients)) {
+    if (now - raw.lqHeard > 15000) quiet++;
+    const ws = raw.transport && raw.transport.socket;
+    const queued = ws && typeof ws.bufferedAmount === 'number' ? ws.bufferedAmount : 0;
+    if (queued > 0) { waiting++; waitingBytes += queued; }
+  }
+  const line = { instance: INSTANCE, connections, opened: health.opened, closed: health.closed, quiet, waiting, waitingBytes, loopLagMs: health.lagMax, statePushes: health.pushes, slowestPushMs: health.pushMs, memoryMb: Math.round(process.memoryUsage().rss / 1048576) };
+  health.opened = 0; health.closed = {}; health.lagMax = 0; health.pushes = 0; health.pushMs = 0;
+  games.ping().then(() => { line.databaseMs = Date.now() - now; }, () => { line.databaseMs = 'failed'; }).then(() => console.log('[health] ' + JSON.stringify(line)));
+}, 10000).unref();
 const hostNs = io.of('/host');
 
 /*
@@ -289,9 +319,11 @@ async function refresh(pin, includePlayers) {
   const hostIds = hostNs.adapter.rooms.get(hostRoom(pin));
   const playerIds = includePlayers ? io.of('/').adapter.rooms.get(playerRoom(pin)) : null;
   if (!(hostIds && hostIds.size) && !(playerIds && playerIds.size)) return;
+  const started = Date.now();
   const g = await games.loadGame(pin);
   if (!g) return;
   armTimer(g);
+  if (includePlayers) { health.pushes++; setImmediate(() => { health.pushMs = Math.max(health.pushMs, Date.now() - started); }); }
   if (hostIds && hostIds.size) hostNs.to(hostRoom(pin)).emit('state', games.hostState(g));
   if (playerIds && playerIds.size) {
     const rankMap = new Map(games.ranking(g).map((p, i) => [p.id, i + 1]));
@@ -333,7 +365,7 @@ hostNs.use((socket, next) => (sessionValid(socket.request.headers.cookie) ? next
 
 hostNs.on('connection', (socket) => {
   games.subscribe(onEvent);
-  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE });
+  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE, instance: INSTANCE });
 
   socket.on('host:create', guard(async (data, cb) => {
     const quiz = await games.getQuiz(data.quizId);
@@ -378,7 +410,7 @@ hostNs.on('connection', (socket) => {
 // ----- players -----
 io.on('connection', (socket) => {
   games.subscribe(onEvent);
-  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE });
+  if (RECYCLE) socket.emit('cfg', { recycle: RECYCLE, instance: INSTANCE });
   const ip = String(socket.handshake.headers['x-forwarded-for'] || socket.handshake.address).split(',')[0].trim();
   let failures = 0;
 
