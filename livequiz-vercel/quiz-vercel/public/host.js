@@ -254,14 +254,27 @@
       }, (c.recycle[0] + Math.random() * (c.recycle[1] - c.recycle[0])) * 1000);
     });
     socket.on('disconnect', function (reason) { clearTimeout(recycleTimer); if (reason !== 'io client disconnect') showConn(true); });
+    // silent-connection check: nothing from the server for 14 s (it sends a heartbeat every 10 s)
+    // means the connection died unnoticed, so reconnect at once instead of waiting ~30 s
+    socket.io.on('ping', heard);
+    socket.on('state', heard);
     socket.on('connect', function () {
+      heard();
       showConn(false);
       var pin = getPin();
       if (pin) socket.emit('host:resume', { pin: pin }, function (res) { if (res && res.error) { setPin(null); game = null; show('list'); } });
     });
     socket.on('connect_error', function (err) { if (err && err.message === 'unauthorized') { socket.disconnect(); socket = null; show('login'); } });
   }
-  var creating = false, recycleTimer = null;
+  var creating = false, recycleTimer = null, lastHeard = Date.now();
+  function heard() { lastHeard = Date.now(); }
+  setInterval(function () {
+    if (!socket || !socket.connected || Date.now() - lastHeard < 14000) return;
+    heard();
+    showConn(true);
+    socket.disconnect();
+    socket.connect();
+  }, 2000);
   // Safety net: every 5 seconds re-read the game, in case a live update was missed.
   setInterval(function () {
     var pin = getPin();

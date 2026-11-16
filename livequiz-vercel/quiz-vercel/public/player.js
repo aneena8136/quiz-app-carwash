@@ -211,11 +211,25 @@
     recycleMax = c.recycle[1] * 1000;
     recycleTimer = setTimeout(recycle, (c.recycle[0] + Math.random() * (c.recycle[1] - c.recycle[0])) * 1000);
   });
+  // Silent-connection check: the server sends a heartbeat every 10 s. If nothing has arrived for 14 s,
+  // the connection has died without the browser noticing (weak Wi-Fi, a network switch), so start a
+  // fresh one at once instead of waiting ~30 s for the built-in timeout.
+  var lastHeard = Date.now();
+  function heard() { lastHeard = Date.now(); }
+  socket.io.on('ping', heard);
+  socket.on('state', heard);
+  setInterval(function () {
+    if (!socket.connected || Date.now() - lastHeard < 14000) return;
+    heard();
+    $('conn').classList.remove('hidden');
+    recycle(true);
+  }, 2000);
   socket.on('disconnect', function (reason) {
     clearTimeout(recycleTimer);
     if (reason !== 'io client disconnect') $('conn').classList.remove('hidden');
   });
   socket.on('connect', function () {
+    heard();
     connectedAt = Date.now();
     $('conn').classList.add('hidden');
     var saved = me || load();
