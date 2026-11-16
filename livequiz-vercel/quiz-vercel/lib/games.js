@@ -341,7 +341,7 @@ function playerState(g, p, rankMap) {
 }
 
 module.exports = {
-  publish, subscribe, limited, countHit,
+  publish, subscribe, limited, countHit, ping: () => r().ping(),
   listQuizzes, getQuiz, saveQuiz, deleteQuiz,
   createGame, loadGame, getMeta, join, rejoin, setOffline, advance, timeUp, close, answer, kick,
   ranking, hostState, playerState,
