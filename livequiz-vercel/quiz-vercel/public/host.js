@@ -95,7 +95,7 @@
   $('new-quiz-btn').addEventListener('click', function () { openEditor(null); });
 
   // ---------- editor ----------
-  function blankQuestion() { return { text: '', image: '', options: ['', '', '', ''], correct: 0, time: 20 }; }
+  function blankQuestion() { return { text: '', image: '', options: ['', '', '', ''], correct: 0, time: 10 }; }
   function openEditor(q) {
     draft = q ? JSON.parse(JSON.stringify(q)) : { title: '', questions: [blankQuestion()] };
     draft.questions.forEach(function (x) { while (x.options.length < 4) x.options.push(''); });
@@ -198,7 +198,7 @@
         card.appendChild(row);
       });
 
-      card.appendChild(el('p', 'hint', 'Players get 20 seconds to answer.'));
+      card.appendChild(el('p', 'hint', 'Players get 10 seconds to answer.'));
       box.appendChild(card);
     });
   }
@@ -213,7 +213,7 @@
         q.options.forEach(function (o, oi) { if (o.trim()) kept.push(oi); });
         if (kept.indexOf(q.correct) < 0) throw new Error('Question ' + (i + 1) + ': the option marked correct is empty');
         payload.questions.push({
-          text: q.text, image: q.image, time: 20,
+          text: q.text, image: q.image, time: 10,
           options: kept.map(function (oi) { return q.options[oi]; }),
           correct: kept.indexOf(q.correct),
         });
