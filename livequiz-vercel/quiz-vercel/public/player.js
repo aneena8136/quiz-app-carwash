@@ -196,9 +196,12 @@
   // Vercel silently cuts a connection after about 5 minutes. The server says when to swap to a fresh
   // one shortly before that (every player at a different random moment), so nobody sits on a dead line.
   var pending = 0, recycleTimer = null, recycleMax = 0, connectedAt = 0;
-  function recycle() {
+  function recycle(now) {
     clearTimeout(recycleTimer);
-    if (pending > 0) { recycleTimer = setTimeout(recycle, 1000); return; } // let an answer finish first
+    // a planned swap waits while an answer is on its way, or while a question is on screen that
+    // the player has not answered yet (a question lasts 20 s, so there is always time before the cut)
+    var midQuestion = current && current.state === 'question' && current.choice == null && Date.now() - connectedAt < recycleMax + 25000;
+    if (now !== true && (pending > 0 || midQuestion)) { recycleTimer = setTimeout(recycle, 1000); return; }
     socket.disconnect();
     socket.connect();
   }
@@ -228,9 +231,9 @@
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !me || !socket.connected) return;
     // asleep past the swap time, or no reply: this connection is dead, so start a fresh one straight away
-    if (recycleMax && Date.now() - connectedAt > recycleMax) { recycle(); return; }
+    if (recycleMax && Date.now() - connectedAt > recycleMax) { recycle(true); return; }
     socket.timeout(4000).emit('player:join', { pin: me.pin, playerId: me.playerId }, function (err, res) {
-      if (err) { recycle(); return; }
+      if (err) { recycle(true); return; }
       if (res && res.gone) reset('');
     });
   });
