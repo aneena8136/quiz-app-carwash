@@ -226,8 +226,10 @@ if (!ON_VERCEL) {
 const server = http.createServer(app);
 const io = new Server(server, {
   path: '/api/server', addTrailingSlash: false, transports: ['websocket'], serveClient: false,
-  // heartbeat: notice a dead connection within ~20 seconds, but tolerate a busy phone or network for 10
-  maxHttpBufferSize: 20000, pingInterval: 10000, pingTimeout: 10000,
+  // heartbeat every 10 s. A connection is only given up after 20 s of silence, so a short network stall
+  // (seen on live: ~15 s with nothing delivered) no longer throws players out; screens swap connections
+  // before Vercel's 5-minute cut by themselves, so a long timeout is safe.
+  maxHttpBufferSize: 20000, pingInterval: 10000, pingTimeout: 20000,
 });
 
 // Vercel silently cuts a connection after about 5 minutes. Browsers are told to swap to a fresh
@@ -236,12 +238,12 @@ const RECYCLE = (() => {
   const m = /^(\d+)-(\d+)$/.exec(process.env.CONN_RECYCLE_SEC || (ON_VERCEL ? '200-260' : ''));
   return m && Number(m[1]) >= 5 && Number(m[2]) >= Number(m[1]) ? [Number(m[1]), Number(m[2])] : null;
 })();
-const OFFLINE_GRACE_MS = 3000; // a player who is only swapping connections is never counted as offline
+const OFFLINE_GRACE_MS = 6000; // a player who is only swapping connections is never counted as offline
 
-// ---------- monitoring: one log line per instance every 10 s while people are connected ----------
-// Shows in the Vercel logs how many connections an instance holds, why connections ended, whether the
-// instance was held up (loopLagMs), how fast the database answers, and how many connections have gone
-// quiet or have data waiting to be sent. No personal data.
+// ---------- monitoring: a [health] line in the Vercel logs whenever something looks wrong ----------
+// Checked every 10 s per instance: connections closed for missing heartbeats, connections gone quiet,
+// the instance held up (loopLagMs) or the database slow. Nothing is logged while all is well, and the
+// line holds counts only - no personal data.
 const INSTANCE = crypto.randomBytes(3).toString('hex');
 const health = { opened: 0, closed: {}, lagMax: 0, pushes: 0, pushMs: 0 };
 let lastBeat = Date.now();
@@ -265,7 +267,10 @@ setInterval(() => {
   }
   const line = { instance: INSTANCE, connections, opened: health.opened, closed: health.closed, quiet, waiting, waitingBytes, loopLagMs: health.lagMax, statePushes: health.pushes, slowestPushMs: health.pushMs, memoryMb: Math.round(process.memoryUsage().rss / 1048576) };
   health.opened = 0; health.closed = {}; health.lagMax = 0; health.pushes = 0; health.pushMs = 0;
-  games.ping().then(() => { line.databaseMs = Date.now() - now; }, () => { line.databaseMs = 'failed'; }).then(() => console.log('[health] ' + JSON.stringify(line)));
+  // players swapping or leaving show up as 'transport close'; anything else is worth a look
+  const odd = quiet > 0 || line.loopLagMs > 1000 || Object.keys(line.closed).some((reason) => reason !== 'transport close');
+  games.ping().then(() => { line.databaseMs = Date.now() - now; }, () => { line.databaseMs = 'failed'; })
+    .then(() => { if (odd || !(line.databaseMs <= 1000)) console.log('[health] ' + JSON.stringify(line)); });
 }, 10000).unref();
 const hostNs = io.of('/host');
 
