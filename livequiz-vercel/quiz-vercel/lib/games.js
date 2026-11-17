@@ -73,7 +73,7 @@ function metaTtl(meta) {
 }
 function putMeta(pipe, meta) { return pipe.set(gk(meta.pin), JSON.stringify(meta), 'EX', metaTtl(meta)); }
 
-const QUESTION_TIME = 10; // every question gets 10 seconds, whatever the saved quiz says
+const QUESTION_TIME = 15; // every question gets 15 seconds, whatever the saved quiz says
 
 // `requestId` (optional) identifies one "Host live" click: sending it again returns the same game
 async function createGame(quiz, requestId) {
